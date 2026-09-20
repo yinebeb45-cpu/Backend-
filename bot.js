@@ -1,8 +1,8 @@
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 
-// Replace with your actual token from BotFather
-const token = 'YOUR_TELEGRAM_BOT_TOKEN';
+// Your real Telegram bot token
+const token = '8890048280:AAH-p53MOeIJ7J5YXTPCnWBfqFIsjL9A9-s';
 const adminGroupId = '-4468798532';
 
 // Create a bot instance that uses polling to fetch new updates
@@ -94,4 +94,3 @@ bot.on('callback_query', async (query) => {
 });
 
 console.log('🚀 Ha Fantasy Bot is active and listening for web requests...');
-
