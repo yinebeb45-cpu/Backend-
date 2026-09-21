@@ -5,41 +5,28 @@ const express = require('express');
 const token = '8890048280:AAH-p53MOeIJ7J5YXTPCnWBfqFIsjL9A9-s';
 const adminGroupId = '-1004468798532';
 
-// Create a bot instance that uses polling to fetch new updates
+// Create a bot instance
 const bot = new TelegramBot(token, { polling: true });
 
-// Setup a basic Express server to satisfy Render's port binding requirement
+// Setup Express server
 const app = express();
+app.use(express.json()); // Essential to read data sent from your frontend web app
+
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
   res.send('🚀 Ha Fantasy Bot is active and listening for web requests...');
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
-
-// Handle incoming messages / WebApp data
-bot.on('message', async (msg) => {
-  const chatId = msg.chat.id;
-  const text = msg.text;
-
-  if (!text) return;
-
-  // 1. Handle Deposit Submissions
-  if (text.startsWith('DEPOSIT_SUBMIT:')) {
-    const parts = text.split(':');
-    const amount = parts[1] || '100';
-    const receipt = parts[2] || 'N/A';
-    
-    const userName = msg.from.first_name || 'User';
-    const userId = msg.from.id;
+// 1. API Endpoint for Deposits from Vercel Frontend
+app.post('/api/deposit', async (req, res) => {
+  try {
+    const { userId, userName, amount, receipt } = req.body;
 
     const messageText = `📥 **New Deposit Request**\n\n` +
-      `👤 **User:** ${userName} (ID: \`${userId}\`)\n` +
-      `💰 **Amount:** ${amount} ETB\n` +
-      `📄 **Receipt:** ${receipt}\n\n` +
+      `👤 **User:** ${userName || 'User'} (ID: \`${userId || 'N/A'}\`)\n` +
+      `💰 **Amount:** ${amount || '100'} ETB\n` +
+      `📄 **Receipt:** ${receipt || 'N/A'}\n\n` +
       `⏳ **Status:** Pending Admin Approval`;
 
     const inlineKeyboard = {
@@ -54,22 +41,22 @@ bot.on('message', async (msg) => {
     };
 
     await bot.sendMessage(adminGroupId, messageText, { parse_mode: 'Markdown', ...inlineKeyboard });
-    bot.sendMessage(chatId, '✅ Your deposit request has been submitted and is pending admin approval.');
+    res.status(200).json({ success: true, message: 'Sent to admin group' });
+  } catch (error) {
+    console.error('Error handling deposit API:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
+});
 
-  // 2. Handle Withdrawal Requests
-  else if (text.startsWith('WITHDRAW_SUBMIT:')) {
-    const parts = text.split(':');
-    const amount = parts[1] || '100';
-    const accountDetails = parts[2] || 'N/A';
-    
-    const userName = msg.from.first_name || 'User';
-    const userId = msg.from.id;
+// 2. API Endpoint for Withdrawals from Vercel Frontend
+app.post('/api/withdraw', async (req, res) => {
+  try {
+    const { userId, userName, amount, accountDetails } = req.body;
 
     const messageText = `📤 **New Withdrawal Request**\n\n` +
-      `👤 **User:** ${userName} (ID: \`${userId}\`)\n` +
-      `💸 **Amount:** ${amount} ETB\n` +
-      `🏦 **Account/Phone:** ${accountDetails}\n\n` +
+      `👤 **User:** ${userName || 'User'} (ID: \`${userId || 'N/A'}\`)\n` +
+      `💸 **Amount:** ${amount || '100'} ETB\n` +
+      `🏦 **Account/Phone:** ${accountDetails || 'N/A'}\n\n` +
       `⏳ **Status:** Pending Admin Payout`;
 
     const inlineKeyboard = {
@@ -84,19 +71,25 @@ bot.on('message', async (msg) => {
     };
 
     await bot.sendMessage(adminGroupId, messageText, { parse_mode: 'Markdown', ...inlineKeyboard });
-    bot.sendMessage(chatId, '✅ Your withdrawal request has been submitted and is pending processing.');
+    res.status(200).json({ success: true, message: 'Sent to admin group' });
+  } catch (error) {
+    console.error('Error handling withdraw API:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Handle admin button clicks
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
+
+// Handle admin button clicks inside the Telegram group
 bot.on('callback_query', async (query) => {
   const action = query.data;
   const msg = query.message;
 
-  // Deposit Actions
   if (action.startsWith('approve_dep_')) {
     const [, , userId, amount] = action.split('_');
-    bot.sendMessage(userId, `✅ Your deposit of ${amount} ETB has been approved by the admin!`);
+    if (userId) bot.sendMessage(userId, `✅ Your deposit of ${amount} ETB has been approved by the admin!`);
     bot.editMessageText(`${msg.text}\n\n✅ **STATUS: APPROVED BY ADMIN**`, {
       chat_id: msg.chat.id, message_id: msg.message_id, parse_mode: 'Markdown'
     });
@@ -104,17 +97,15 @@ bot.on('callback_query', async (query) => {
   } 
   else if (action.startsWith('reject_dep_')) {
     const [, , userId] = action.split('_');
-    bot.sendMessage(userId, `❌ Your deposit request was rejected. Please contact support if this was a mistake.`);
+    if (userId) bot.sendMessage(userId, `❌ Your deposit request was rejected. Please contact support.`);
     bot.editMessageText(`${msg.text}\n\n❌ **STATUS: REJECTED**`, {
       chat_id: msg.chat.id, message_id: msg.message_id, parse_mode: 'Markdown'
     });
     bot.answerCallbackQuery(query.id, { text: 'Deposit rejected.' });
   }
-
-  // Withdrawal Actions
   else if (action.startsWith('approve_wdraw_')) {
     const [, , userId, amount] = action.split('_');
-    bot.sendMessage(userId, `🎉 Your withdrawal of ${amount} ETB has been sent to your account!`);
+    if (userId) bot.sendMessage(userId, `🎉 Your withdrawal of ${amount} ETB has been sent to your account!`);
     bot.editMessageText(`${msg.text}\n\n✅ **STATUS: PAID OUT**`, {
       chat_id: msg.chat.id, message_id: msg.message_id, parse_mode: 'Markdown'
     });
@@ -122,7 +113,7 @@ bot.on('callback_query', async (query) => {
   } 
   else if (action.startsWith('reject_wdraw_')) {
     const [, , userId] = action.split('_');
-    bot.sendMessage(userId, `❌ Your withdrawal request was rejected. Please contact support.`);
+    if (userId) bot.sendMessage(userId, `❌ Your withdrawal request was rejected. Please contact support.`);
     bot.editMessageText(`${msg.text}\n\n❌ **STATUS: REJECTED**`, {
       chat_id: msg.chat.id, message_id: msg.message_id, parse_mode: 'Markdown'
     });
@@ -131,3 +122,4 @@ bot.on('callback_query', async (query) => {
 });
 
 console.log('🚀 Ha Fantasy Bot is active and listening for web requests...');
+
