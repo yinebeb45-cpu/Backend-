@@ -3,7 +3,7 @@ const express = require('express');
 
 // Your real Telegram bot token
 const token = '8890048280:AAH-p53MOeIJ7J5YXTPCnWBfqFIsjL9A9-s';
-const adminGroupId = '-4468798532';
+const adminGroupId = '-1004468798532';
 
 // Create a bot instance that uses polling to fetch new updates
 const bot = new TelegramBot(token, { polling: true });
@@ -25,8 +25,10 @@ bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
 
-  // Handle deposit submissions from Mini App text or data
-  if (text && text.startsWith('DEPOSIT_SUBMIT:')) {
+  if (!text) return;
+
+  // 1. Handle Deposit Submissions
+  if (text.startsWith('DEPOSIT_SUBMIT:')) {
     const parts = text.split(':');
     const amount = parts[1] || '100';
     const receipt = parts[2] || 'N/A';
@@ -44,16 +46,45 @@ bot.on('message', async (msg) => {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: '✅ Approve Deposit', callback_data: `approve_${userId}_${amount}` },
-            { text: '❌ Reject', callback_data: `reject_${userId}` }
+            { text: '✅ Approve Deposit', callback_data: `approve_dep_${userId}_${amount}` },
+            { text: '❌ Reject', callback_data: `reject_dep_${userId}` }
           ]
         ]
       }
     };
 
-    // Forward request to the private admin group
     await bot.sendMessage(adminGroupId, messageText, { parse_mode: 'Markdown', ...inlineKeyboard });
     bot.sendMessage(chatId, '✅ Your deposit request has been submitted and is pending admin approval.');
+  }
+
+  // 2. Handle Withdrawal Requests
+  else if (text.startsWith('WITHDRAW_SUBMIT:')) {
+    const parts = text.split(':');
+    const amount = parts[1] || '100';
+    const accountDetails = parts[2] || 'N/A';
+    
+    const userName = msg.from.first_name || 'User';
+    const userId = msg.from.id;
+
+    const messageText = `📤 **New Withdrawal Request**\n\n` +
+      `👤 **User:** ${userName} (ID: \`${userId}\`)\n` +
+      `💸 **Amount:** ${amount} ETB\n` +
+      `🏦 **Account/Phone:** ${accountDetails}\n\n` +
+      `⏳ **Status:** Pending Admin Payout`;
+
+    const inlineKeyboard = {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '✅ Confirm Sent', callback_data: `approve_wdraw_${userId}_${amount}` },
+            { text: '❌ Reject', callback_data: `reject_wdraw_${userId}` }
+          ]
+        ]
+      }
+    };
+
+    await bot.sendMessage(adminGroupId, messageText, { parse_mode: 'Markdown', ...inlineKeyboard });
+    bot.sendMessage(chatId, '✅ Your withdrawal request has been submitted and is pending processing.');
   }
 });
 
@@ -62,34 +93,40 @@ bot.on('callback_query', async (query) => {
   const action = query.data;
   const msg = query.message;
 
-  if (action.startsWith('approve_')) {
-    const [, userId, amount] = action.split('_');
-
-    // Notify user
+  // Deposit Actions
+  if (action.startsWith('approve_dep_')) {
+    const [, , userId, amount] = action.split('_');
     bot.sendMessage(userId, `✅ Your deposit of ${amount} ETB has been approved by the admin!`);
-
-    // Update admin group message
     bot.editMessageText(`${msg.text}\n\n✅ **STATUS: APPROVED BY ADMIN**`, {
-      chat_id: msg.chat.id,
-      message_id: msg.message_id,
-      parse_mode: 'Markdown'
+      chat_id: msg.chat.id, message_id: msg.message_id, parse_mode: 'Markdown'
     });
-    
     bot.answerCallbackQuery(query.id, { text: 'Deposit approved!' });
-  } else if (action.startsWith('reject_')) {
-    const [, userId] = action.split('_');
-
-    // Notify user
+  } 
+  else if (action.startsWith('reject_dep_')) {
+    const [, , userId] = action.split('_');
     bot.sendMessage(userId, `❌ Your deposit request was rejected. Please contact support if this was a mistake.`);
-
-    // Update admin group message
     bot.editMessageText(`${msg.text}\n\n❌ **STATUS: REJECTED**`, {
-      chat_id: msg.chat.id,
-      message_id: msg.message_id,
-      parse_mode: 'Markdown'
+      chat_id: msg.chat.id, message_id: msg.message_id, parse_mode: 'Markdown'
     });
-
     bot.answerCallbackQuery(query.id, { text: 'Deposit rejected.' });
+  }
+
+  // Withdrawal Actions
+  else if (action.startsWith('approve_wdraw_')) {
+    const [, , userId, amount] = action.split('_');
+    bot.sendMessage(userId, `🎉 Your withdrawal of ${amount} ETB has been sent to your account!`);
+    bot.editMessageText(`${msg.text}\n\n✅ **STATUS: PAID OUT**`, {
+      chat_id: msg.chat.id, message_id: msg.message_id, parse_mode: 'Markdown'
+    });
+    bot.answerCallbackQuery(query.id, { text: 'Withdrawal completed!' });
+  } 
+  else if (action.startsWith('reject_wdraw_')) {
+    const [, , userId] = action.split('_');
+    bot.sendMessage(userId, `❌ Your withdrawal request was rejected. Please contact support.`);
+    bot.editMessageText(`${msg.text}\n\n❌ **STATUS: REJECTED**`, {
+      chat_id: msg.chat.id, message_id: msg.message_id, parse_mode: 'Markdown'
+    });
+    bot.answerCallbackQuery(query.id, { text: 'Withdrawal rejected.' });
   }
 });
 
